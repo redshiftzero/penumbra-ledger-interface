@@ -12,7 +12,6 @@ export default function Home() {
   const [account, setAccount] = useState(0);
   const [app, setApp] = useState<PenumbraApp | null>(null);
 
-  // This should be /0' to specify the default wallet
   const DEFAULT_PATH = "m/44'/6532'";
 
   const handleConnect = async () => {
@@ -110,8 +109,6 @@ export default function Home() {
 
 
 // Add these helper functions at the top of your file, outside the component
-const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
-
 function convertBits(data: Uint8Array, fromBits: number, toBits: number, pad: boolean): number[] {
   let acc = 0;
   let bits = 0;
@@ -137,34 +134,49 @@ function convertBits(data: Uint8Array, fromBits: number, toBits: number, pad: bo
   return result;
 }
 
-function createChecksum(prefix: string, words: number[]): string {
-  // Compute polynomial modulo
-  const values = [...prefix.split('').map(c => c.charCodeAt(0) & 31), 0, ...words];
-  let polymod = 1;
-  for (let v of values) {
-    let b = polymod >> 25;
-    polymod = ((polymod & 0x1ffffff) << 5) ^ v;
-    for (let i = 0; i < 25; i++) {
-      if ((b >> i) & 1) {
-        polymod ^= 0x3b6a57b2 << i;
-      }
-    }
-  }
+const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+const BECH32M_CONST = 0x2bc830a3;
 
-  // Convert to 6 characters
-  const result: string[] = [];
-  for (let i = 0; i < 6; i++) {
-    result.push(CHARSET[polymod & 31]);
-    polymod >>= 5;
-  }
-  return result.reverse().join('');
+function hrpExpand(hrp: string): number[] {
+  const highBits = hrp.split('').map(c => c.charCodeAt(0) >> 5);
+  const lowBits = hrp.split('').map(c => c.charCodeAt(0) & 31);
+  return [...highBits, 0, ...lowBits];
 }
 
-function encodeBech32m(prefix: string, words: number[]): string {
-  const checksum = createChecksum(prefix, words);
-  let result = `${prefix}1`;
-  for (const word of words) {
-    result += CHARSET.charAt(word);
+function polymod(values: number[]): number {
+  let chk = 1;
+  for (const value of values) {
+    const top = chk >> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ value;
+    for (let i = 0; i < 5; i++) {
+      chk ^= (top >> i) & 1 ? GENERATOR[i] : 0;
+    }
   }
-  return result + checksum;
+  return chk;
+}
+
+function createChecksum(hrp: string, data: number[]): number[] {
+  const values = [...hrpExpand(hrp), ...data];
+  const polymodValue = polymod([...values, 0, 0, 0, 0, 0, 0]) ^ BECH32M_CONST;
+  const checksum = [];
+  for (let i = 0; i < 6; i++) {
+    checksum.push((polymodValue >> (5 * (5 - i))) & 31);
+  }
+  return checksum;
+}
+
+function encodeBech32m(hrp: string, data: number[]): string {
+  const checksum = createChecksum(hrp, data);
+  const combined = [...data, ...checksum];
+  let result = `${hrp}1`;
+  for (const value of combined) {
+    result += CHARSET[value];
+  }
+  return result;
+}
+
+function verifyChecksum(hrp: string, data: number[]): boolean {
+  const values = [...hrpExpand(hrp), ...data];
+  return polymod(values) === BECH32M_CONST;
 }
