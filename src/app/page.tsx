@@ -11,6 +11,7 @@ export default function Home() {
   const [address, setAddress] = useState('');
   const [account, setAccount] = useState(0);
   const [app, setApp] = useState<PenumbraApp | null>(null);
+  const [fvk, setFvk] = useState('');
 
   const DEFAULT_PATH = "m/44'/6532'";
 
@@ -54,6 +55,25 @@ export default function Home() {
     }
   };
 
+  const getFvk = async () => {
+    try {
+      setError('');
+      if (!app) throw new Error('Please connect to Ledger first');
+
+      console.log(DEFAULT_PATH, account);
+      const response = await app.getFVK(DEFAULT_PATH, account);
+
+      if (response.fvk) {
+        // Convert Buffer to hex string
+        const fvkHex = Buffer.from(response.fvk).toString('hex');
+        setFvk(fvkHex);
+        setStatus('FVK retrieved successfully');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to get FVK');
+    }
+  };
+
   return (
     <main className="min-h-screen p-8">
       <div className="max-w-2xl mx-auto space-y-4">
@@ -67,8 +87,23 @@ export default function Home() {
           Connect to Ledger
         </button>
 
+        <button
+          onClick={getFvk}
+          disabled={!app}
+          className="w-full bg-purple-500 text-white p-2 rounded disabled:bg-gray-300"
+        >
+          Get Full Viewing Key
+        </button>
+
+        {fvk && (
+          <div className="p-4 bg-gray-100 rounded break-all">
+            <div className="font-bold">Full Viewing Key:</div>
+            <div className="font-mono text-sm">{fvk}</div>
+          </div>
+        )}
+
         <div>
-          <label className="block mb-2">Account Index</label>
+          <label className="block mb-2">Address Index for Account 0</label>
           <input
             type="number"
             value={account}
