@@ -31,7 +31,6 @@ export default function Home() {
     }
   };
 
-  // Then modify your getAddress function:
   const getAddress = async () => {
     try {
       setError('');
@@ -39,6 +38,29 @@ export default function Home() {
 
       // No way to generate addresses for other accounts?
       const response = await app.getAddress(DEFAULT_PATH, account);
+
+      if (response.address) {
+        // Convert Buffer to 5-bit words
+        const words = convertBits(new Uint8Array(response.address), 8, 5, true);
+
+        // Encode with our custom bech32m implementation
+        const encoded = encodeBech32m('penumbra', words);
+
+        setAddress(encoded);
+        setStatus('Address retrieved successfully');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to get address');
+    }
+  };
+
+  const showAddress = async () => {
+    try {
+      setError('');
+      if (!app) throw new Error('Please connect to Ledger first');
+
+      // No way to generate addresses for other accounts?
+      const response = await app.showAddress(DEFAULT_PATH, account);
 
       if (response.address) {
         // Convert Buffer to 5-bit words
@@ -120,24 +142,32 @@ export default function Home() {
           Get Address
         </button>
 
+        <button
+          onClick={showAddress}
+          disabled={!app}
+          className="w-full bg-blue-500 text-white p-2 rounded disabled:bg-gray-300"
+        >
+          Show Address on Ledger
+        </button>
+
         {address && (
           <div className="p-4 bg-gray-100 rounded break-all">
             <div className="font-bold">Address:</div>
             <div className="font-mono text-sm">{address}</div>
           </div>
         )}
-
-        <div className="mt-4">
-          <div className="font-bold">Status:</div>
-          <div>{status}</div>
-
-          {error && (
-            <div className="mt-2 p-4 bg-red-100 text-red-700 rounded">
-              {error}
-            </div>
-          )}
-        </div>
       </div>
+      <div className="mt-4">
+        <div className="font-bold">Status:</div>
+        <div>{status}</div>
+
+        {error && (
+          <div className="mt-2 p-4 bg-red-100 text-red-700 rounded">
+            {error}
+          </div>
+        )}
+      </div>
+
     </main>
   );
 }
