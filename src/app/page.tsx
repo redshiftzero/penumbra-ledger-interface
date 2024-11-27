@@ -1,8 +1,10 @@
 'use client';
 
+import * as protobuf from 'protobufjs';
 import { useState } from 'react';
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb';
 import { PenumbraApp } from '@zondax/ledger-penumbra';
+import { AddressIndex } from '@zondax/ledger-penumbra';
 import { bech32m } from 'bech32';
 
 export default function Home() {
@@ -12,8 +14,9 @@ export default function Home() {
   const [account, setAccount] = useState(0);
   const [app, setApp] = useState<PenumbraApp | null>(null);
   const [fvk, setFvk] = useState('');
+  const [signatureResult, setSignatureResult] = useState<string>('');
 
-  const DEFAULT_PATH = "m/44'/6532'";
+  const DEFAULT_PATH = "m/44'/6532'/0'";
 
   const handleConnect = async () => {
     try {
@@ -36,8 +39,10 @@ export default function Home() {
       setError('');
       if (!app) throw new Error('Please connect to Ledger first');
 
-      // No way to generate addresses for other accounts?
-      const response = await app.getAddress(DEFAULT_PATH, account);
+      const my_addressIndex: AddressIndex = {
+        account: account,
+      };
+      const response = await app.getAddress(DEFAULT_PATH, my_addressIndex);
 
       if (response.address) {
         // Convert Buffer to 5-bit words
@@ -60,7 +65,10 @@ export default function Home() {
       if (!app) throw new Error('Please connect to Ledger first');
 
       // No way to generate addresses for other accounts?
-      const response = await app.showAddress(DEFAULT_PATH, account);
+      const my_addressIndex: AddressIndex = {
+        account: account,
+      };
+      const response = await app.showAddress(DEFAULT_PATH, my_addressIndex);
 
       if (response.address) {
         // Convert Buffer to 5-bit words
@@ -82,17 +90,43 @@ export default function Home() {
       setError('');
       if (!app) throw new Error('Please connect to Ledger first');
 
-      console.log(DEFAULT_PATH, account);
-      const response = await app.getFVK(DEFAULT_PATH, account);
+      const my_addressIndex: AddressIndex = {
+        account: account,
+      };
+      const response = await app.getFVK(DEFAULT_PATH, my_addressIndex);
 
-      if (response.fvk) {
-        // Convert Buffer to hex string
-        const fvkHex = Buffer.from(response.fvk).toString('hex');
+      if (response.ak) {
+        const combinedBuffer = Buffer.concat([response.ak, response.nk]);
+        const fvkHex = combinedBuffer.toString('hex');
         setFvk(fvkHex);
         setStatus('FVK retrieved successfully');
       }
     } catch (err: any) {
       setError(err.message || 'Failed to get FVK');
+    }
+  };
+
+  const signTransaction = async () => {
+    try {
+      setError('');
+      if (!app) throw new Error('Please connect to Ledger first');
+
+      const response2 = await fetch('/protos/transaction_plan_3.proto');
+      const arrayBuffer = await response2.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      const my_addressIndex: AddressIndex = {
+        account: account,
+      };
+      const response = await app.sign(DEFAULT_PATH, my_addressIndex, buffer);
+
+      if (response.signature) {
+        const signatureHex = Buffer.from(response.signature).toString('hex');
+        setSignatureResult(signatureHex);
+        setStatus('Transaction signed successfully');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign transaction');
     }
   };
 
@@ -108,6 +142,22 @@ export default function Home() {
         >
           Connect to Ledger
         </button>
+        <br></br>
+
+        <button
+          onClick={signTransaction}
+          disabled={!app}
+          className="w-full bg-yellow-500 text-white p-2 rounded disabled:bg-gray-300"
+        >
+          Sign Test Transaction 3
+        </button>
+
+        {signatureResult && (
+          <div className="p-4 bg-gray-100 rounded break-all">
+            <div className="font-bold">Signature:</div>
+            <div className="font-mono text-sm">{signatureResult}</div>
+          </div>
+        )}
 
         <button
           onClick={getFvk}
@@ -116,6 +166,7 @@ export default function Home() {
         >
           Get Full Viewing Key
         </button>
+        <br></br>
 
         {fvk && (
           <div className="p-4 bg-gray-100 rounded break-all">
