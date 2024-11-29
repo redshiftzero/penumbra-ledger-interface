@@ -111,22 +111,85 @@ export default function Home() {
       setError('');
       if (!app) throw new Error('Please connect to Ledger first');
 
+      const root = new protobuf.Root();
+
+      root.resolvePath = (origin, target) => {
+        // Remove everything up to the second 'penumbra' in the path
+        const parts = target.split('penumbra/');
+        const cleanTarget = parts[parts.length - 1];
+
+        const path = `/protos/penumbra/${cleanTarget}`;
+        console.log('Resolving import:', { origin, target, resolvedPath: path });
+        return path;
+      };
+
+      await root.load('/protos/penumbra/core/transaction/v1/transaction.proto', {
+        keepCase: true,
+      });
+
+      const TransactionPlan = root.lookupType('penumbra.core.transaction.v1.TransactionPlan');
+
+      // // Create the simplest possible transaction plan
+      // const message = TransactionPlan.create({
+      //   actions: [], // Empty array of actions
+      // });
+
+      // Load the encoded message
       const response2 = await fetch('/protos/transaction_plan_3.proto');
       const arrayBuffer = await response2.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      const encodedMessage = new Uint8Array(arrayBuffer);
+
+      // Decode and verify it's a valid TransactionPlan
+      const decodedPlan = TransactionPlan.decode(encodedMessage);
+      const verifyError = TransactionPlan.verify(decodedPlan);
+      if (verifyError) {
+        throw new Error(`Invalid transaction plan: ${verifyError}`);
+      }
+
+      // const response2 = await fetch('/protos/transaction_plan_3.proto');
+      // const arrayBuffer = await response2.arrayBuffer();
+      // //const buffer = Buffer.from(arrayBuffer);
+
+      // // Verify the message
+      // const errMsg = TransactionPlan.verify(message);
+      // if (errMsg) throw Error(errMsg);
+
+      // // Encode to buffer
+      // const buffer = Buffer.from(TransactionPlan.encode(message).finish());
+
+      // Re-encode it to a buffer
+      const buffer = Buffer.from(TransactionPlan.encode(decodedPlan).finish());
+
+      console.log('Transaction plan size:', buffer.length, 'bytes');
+      console.log('Decoded plan:', decodedPlan);
+
+      if (buffer.length > 10240) {
+        throw new Error('Transaction plan too large: must be under 10KB');
+      }
 
       const my_addressIndex: AddressIndex = {
         account: account,
       };
-      const response = await app.sign(DEFAULT_PATH, my_addressIndex, buffer);
+      // Add timeout to the sign operation
+      const signPromise = app.sign(DEFAULT_PATH, my_addressIndex, buffer);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Signing timed out - check your Ledger device')), 30000);
+      });
 
-      if (response.signature) {
-        const signatureHex = Buffer.from(response.signature).toString('hex');
+      const response3 = await Promise.race([signPromise, timeoutPromise]) as Awaited<ReturnType<typeof app.sign>>;
+
+      if (response3.signature) {
+        const signatureHex = Buffer.from(response3.signature).toString('hex');
         setSignatureResult(signatureHex);
         setStatus('Transaction signed successfully');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to sign transaction');
+      console.error('Signing error:', err);
+      if (err.message.includes('timeout')) {
+        setError('Operation timed out. Make sure your Ledger is unlocked and the Penumbra app is open');
+      } else {
+        setError(err.message || 'Failed to sign transaction');
+      }
     }
   };
 
