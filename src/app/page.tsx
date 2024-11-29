@@ -111,6 +111,15 @@ export default function Home() {
       setError('');
       if (!app) throw new Error('Please connect to Ledger first');
 
+      // Check app is ready
+      const appInfo = await app.appInfo();
+      console.log('App Info:', appInfo);
+
+      // Check version
+      const version = await app.getVersion();
+      console.log('App Version:', version);
+
+
       const root = new protobuf.Root();
 
       root.resolvePath = (origin, target) => {
@@ -167,10 +176,19 @@ export default function Home() {
         throw new Error('Transaction plan too large: must be under 10KB');
       }
 
+      console.log('Buffer size before signing:', buffer.length, 'bytes');
+      console.log('First few bytes:', buffer.slice(0, 20));  // Look at start of buffer
+      console.log('Path:', DEFAULT_PATH);
+
+      setStatus('Attempting to sign - please check your Ledger device...');
+
       const my_addressIndex: AddressIndex = {
         account: account,
       };
+      console.log('Address Index:', my_addressIndex);
+
       // Add timeout to the sign operation
+      console.log('Starting sign operation...');
       const signPromise = app.sign(DEFAULT_PATH, my_addressIndex, buffer);
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Signing timed out - check your Ledger device')), 30000);
